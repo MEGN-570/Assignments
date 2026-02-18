@@ -18,7 +18,7 @@ cmap = colormaps['plasma']
 colors = cmap(ind_colors)
 
 "========= LOAD INPUTS AND OTHER PARAMETERS ========="
-phi_ca_0 = 1.1      # Initial cathode voltage, relative to anode (V)
+phi_ca_0 = 1.2      # Initial cathode voltage, relative to anode (V)
 phi_elyte_0 = 0.6   # Initial electrolyte voltage at equilibrium, relative to anode (V)
 nvars = 3           # Number of variables in solution vector SV.  Set this manually,
                     #for now
