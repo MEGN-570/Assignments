@@ -36,7 +36,7 @@ class ptr:
 
     # # Approach 2: store the double layer potentials, plus the electrolyte potential
     # #   at the cathode interface:
-    # phi_dl_an = 0
+    phi_dl_an = 0
     # phi_elyte_ca = 1
     # phi_dl_ca = 2
 
