@@ -51,6 +51,8 @@ class ptr:
 # Additional parameter calculations:
 R = 8.3135              # Universal gas constant, J/mol-K
 F = 96485               # Faraday's constant, C/mol of charge
+beta = 0.5              # Symmetry parameter
+n_elec = 1              # electrons transferred
 
 
 "========= INITIALIZE MODEL ========="
@@ -61,13 +63,47 @@ SV_0[ptr.phi_ca] = phi_ca_0 # Change this if needed, to fit your ptr approach
 
 "========= DEFINE RESIDUAL FUNCTION ========="
 def derivative(_, SV, params, ptr):
+
     dSV_dt = np.zeros_like(SV)
+
+    i_ext = params.i_ext
+    T = params.T
+
+    U_an = -0.4
+    i0_an = 5e-2
+    C_dl_an = 5e-6
+
+    U_ca = 0.6
+    i0_ca = 1e-2
+    C_dl_ca = 1e-4
+
+    phi_elyte_an = SV[ptr.phi_elyte_an]
+    phi_elyte_ca = SV[ptr.phi_elyte_ca]
+    phi_ca = SV[ptr.phi_ca]
+
+    del_phi_dl_an = -phi_elyte_an
+    del_phi_dl_ca = phi_ca - phi_elyte_ca
+
+    eta_an = del_phi_dl_an - U_an
+    eta_ca = del_phi_dl_ca - U_ca
+
+    i_far_an = i0_an * (np.exp(-beta * n_elec * F * eta_an / (R * T)) - np.exp((1 - beta) * n_elec * F * eta_an / (R * T)))
+
+    i_far_ca = i0_ca * (np.exp(-beta * n_elec * F * eta_ca / (R * T)) - np.exp((1 - beta) * n_elec * F * eta_ca / (R * T)))
+
+    i_dl_an = i_ext - i_far_an
+    i_dl_ca = -i_ext - i_far_ca
+
+    dSV_dt[ptr.phi_elyte_an] = -i_dl_an / C_dl_an
+    dSV_dt[ptr.phi_elyte_ca] = -i_dl_ca / C_dl_ca
+    dSV_dt[ptr.phi_ca] = 0
 
     return dSV_dt
 
 "========= RUN / INTEGRATE MODEL ========="
 # Function call expects inputs (residual function, time span, initial value).
 solution = solve_ivp(derivative, [0, .0001], SV_0, args=(params, ptr))
+
 
 "========= PLOTTING AND POST-PROCESSING ========="
 # Depending on what you stored in SV, perform any necessary calculations to extract the
@@ -79,7 +115,7 @@ solution = solve_ivp(derivative, [0, .0001], SV_0, args=(params, ptr))
 
 
 # Define the labels for your legend
-labels = ['$\phi_{elyte, an}$','$\phi_{elyte, ca}$','$\phi_{ca}$']
+labels = [r'$\phi_{elyte, an}$', r'$\phi_{elyte, ca}$', r'$\phi_{ca}$']
 
 # Create the figure:
 fig, ax = plt.subplots()
