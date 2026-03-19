@@ -24,7 +24,7 @@ nvars = 3           # Number of variables in solution vector SV.  Set this manua
                     #for now
 
 class params:
-    i_ext = 0     # External current (A/m2)
+    i_ext = 0.5     # External current (A/m2)
     T = 973         # Temperature (K)
 
 # Positions in solution vector
@@ -104,7 +104,7 @@ def derivative(_, SV, params, ptr):
 
 "========= RUN / INTEGRATE MODEL ========="
 # Function call expects inputs (residual function, time span, initial value).
-solution = solve_ivp(derivative, [0, .0001], SV_0, args=(params, ptr))
+solution = solve_ivp(derivative, [0, .001], SV_0, args=(params, ptr))
 
 
 "========= PLOTTING AND POST-PROCESSING ========="
@@ -141,6 +141,6 @@ ax.legend(prop=font, frameon=False)
 fig.tight_layout()
 
 # Uncomment to save the figure, if you want. Name it however you please:
-plt.savefig('HW2_results.png', dpi=400)
+plt.savefig('HW2_results_ext_current.png', dpi=400)
 # Show figure:
 plt.show()
