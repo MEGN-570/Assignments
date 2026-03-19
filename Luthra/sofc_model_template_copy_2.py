@@ -18,10 +18,10 @@ cmap = colormaps['plasma']
 colors = cmap(ind_colors)
 
 "========= LOAD INPUTS AND OTHER PARAMETERS ========="
+phi_an_0 = 0        # Initial anode voltage
 phi_ca_0 = 1.2      # Initial cathode voltage, relative to anode (V)
 phi_elyte_0 = 0.6   # Initial electrolyte voltage at equilibrium, relative to anode (V)
-nvars = 3           # Number of variables in solution vector SV.  Set this manually,
-                    #for now
+nvars = 2           # Number of variables in solution vector SV.  Set this manually, for now
 
 class params:
     i_ext = 0     # External current (A/m2)
@@ -29,23 +29,8 @@ class params:
 
 # Positions in solution vector
 class ptr:
-    phi_elyte_an = 0
-    phi_elyte_ca = 1
-    phi_ca = 2
-
-    # # Approach 2: store the double layer potentials, plus the electrolyte potential
-    # #   at the cathode interface:
-    # phi_dl_an = 0
-    # phi_elyte_ca = 1
-    # phi_dl_ca = 2
-
-    # # Approach 3: store the double layer potentials ONLY; handle the electrolyte
-    # #   completely external to the integration:
-    # #   NOTE: SET nvars = 2, FOR THIS APPROACH
-    # phi_dl_an = 0
-    # phi_dl_ca = 1
-
-    # # Approach 4, 5, 6, etc...
+    phi_dl_an = 0
+    phi_dl_ca = 1
 
 # Additional parameter calculations:
 R = 8.3135              # Universal gas constant, J/mol-K
@@ -57,12 +42,10 @@ n_elec = 1              # electrons transferred
 "========= INITIALIZE MODEL ========="
 SV_0 = np.zeros((nvars,))
 # Set initial values, according to your approach:  eg:
-SV_0[ptr.phi_ca] = phi_ca_0 # Change this if needed, to fit your ptr approach
-SV_0[ptr.phi_elyte_ca] = phi_elyte_0
-SV_0[ptr.phi_elyte_an] = phi_elyte_0
+SV_0[ptr.phi_dl_an] = phi_elyte_0
+SV_0[ptr.phi_dl_ca] = phi_elyte_0
+
 # Add the other values:
-
-
 U_an = -0.4
 i0_an = 5e-2
 C_dl_an = 5e-6
@@ -109,6 +92,10 @@ def derivative(_, SV, params, ptr):
 "========= RUN / INTEGRATE MODEL ========="
 # Function call expects inputs (residual function, time span, initial value).
 solution = solve_ivp(derivative, [0, .0001], SV_0, args=(params, ptr))
+
+phi_elyte_an = phi_an_0 - solution[ptr.phi_dl_an]
+phi_elyte_ca = solution[ptr.phi_dl_an] + solution[ptr.phi_dl_ca]
+phi_ca = 
 
 
 "========= PLOTTING AND POST-PROCESSING ========="

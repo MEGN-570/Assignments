@@ -33,36 +33,26 @@ class ptr:
     phi_elyte_ca = 1
     phi_ca = 2
 
-    # # Approach 2: store the double layer potentials, plus the electrolyte potential
-    # #   at the cathode interface:
-    # phi_dl_an = 0
-    # phi_elyte_ca = 1
-    # phi_dl_ca = 2
-
-    # # Approach 3: store the double layer potentials ONLY; handle the electrolyte
-    # #   completely external to the integration:
-    # #   NOTE: SET nvars = 2, FOR THIS APPROACH
-    # phi_dl_an = 0
-    # phi_dl_ca = 1
-
-    # # Approach 4, 5, 6, etc...
-
 # Additional parameter calculations:
 R = 8.3135              # Universal gas constant, J/mol-K
 F = 96485               # Faraday's constant, C/mol of charge
 beta = 0.5              # Symmetry parameter
-n_elec = 1              # electrons transferred
+n_elec = 2              # electrons transferred
+
+bnFRT = beta * n_elec * F / R / params.T
 
 
 "========= INITIALIZE MODEL ========="
 SV_0 = np.zeros((nvars,))
+
 # Set initial values, according to your approach:  eg:
 SV_0[ptr.phi_ca] = phi_ca_0 # Change this if needed, to fit your ptr approach
 SV_0[ptr.phi_elyte_ca] = phi_elyte_0
 SV_0[ptr.phi_elyte_an] = phi_elyte_0
+
+phi_an = 0
+
 # Add the other values:
-
-
 U_an = -0.4
 i0_an = 5e-2
 C_dl_an = 5e-6
@@ -80,29 +70,43 @@ def derivative(_, SV, params, ptr):
 
     # reading in parameters
     i_ext = params.i_ext
-    T = params.T
     
-
+    # current system state
     phi_elyte_an = SV[ptr.phi_elyte_an]
     phi_elyte_ca = SV[ptr.phi_elyte_ca]
     phi_ca = SV[ptr.phi_ca]
 
-    phi_dl_an = -phi_elyte_an
-    phi_dl_ca = phi_ca - phi_elyte_ca
+    phi_an = 0.0  # reference
 
-    eta_an = phi_dl_an - U_an
-    eta_ca = phi_dl_ca - U_ca
+    # double layer potentials
+    delta_phi_dl_an = phi_an - phi_elyte_an
+    delta_phi_dl_ca = phi_ca - phi_elyte_ca
 
-    i_far_an = i0_an * (np.exp(-beta * n_elec * F * eta_an / (R * T)) - np.exp((1 - beta) * n_elec * F * eta_an / (R * T)))
+    # overpotentials
+    eta_an = delta_phi_dl_an - U_an
+    eta_ca = delta_phi_dl_ca - U_ca
 
-    i_far_ca = i0_ca * (np.exp(-beta * n_elec * F * eta_ca / (R * T)) - np.exp((1 - beta) * n_elec * F * eta_ca / (R * T)))
+    # faradaic currents (Butler-Volmer)
+    i_far_an = i0_an * (np.exp(-bnFRT * eta_an) - np.exp(bnFRT * eta_an))
+    i_far_ca = i0_ca * (np.exp(-bnFRT * eta_ca) - np.exp(bnFRT * eta_ca))
 
-    i_dl_an = i_ext - i_far_an
-    i_dl_ca = - i_ext - i_far_ca
+    # Double layer currents
+    i_dl_an = -i_ext - i_far_an
+    i_dl_ca = -i_ext - i_far_ca
 
-    dSV_dt[ptr.phi_elyte_an] = -i_dl_an / C_dl_an
-    dSV_dt[ptr.phi_elyte_ca] = -i_dl_ca / C_dl_ca
-    dSV_dt[ptr.phi_ca] = 0
+    # ODEs
+    d_delta_phi_dl_an_dt = - i_dl_an / C_dl_an
+    d_delta_phi_dl_ca_dt = - i_dl_ca / C_dl_ca
+
+    # ODEs
+    d_delta_phi_dl_an_dt =  - i_dl_an / C_dl_an
+    d_phi_ca_dt 
+    d_phi_elyte_ca_dt = d_phi_ca_dt + i_dl_ca / C_dl_ca
+
+    # electrode and electrolyte potentials
+    dSV_dt[ptr.phi_elyte_an] = phi_an - d_delta_phi_dl_an_dt
+    dSV_dt[ptr.phi_elyte_ca] = d_delta_phi_dl_an_dt
+    dSV_dt[ptr.phi_ca] = d_delta_phi_dl_ca_dt - d_delta_phi_dl_an_dt
 
     return dSV_dt
 
@@ -118,7 +122,6 @@ solution = solve_ivp(derivative, [0, .0001], SV_0, args=(params, ptr))
 #       -The electrolyte at the cathode interface
 #       -The cathode.
 #   Using 'approach 1' above, these are direclty stored in your solution vector.
-
 
 
 
