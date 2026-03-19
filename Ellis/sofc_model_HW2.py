@@ -23,7 +23,7 @@ phi_elyte_0 = 0.6       # Initial electrolyte voltage at equilibrium, relative t
 nvars = 2               # Number of variables in solution vector SV.  Set this manually
 
 class params:
-    i_ext = 0           # [A/m^2] External current (positive = load on cell)
+    i_ext = 500           # [A/m^2] External current (positive = load on cell)
     T = 973             # [K] Operating temperature (700 C)
     
     beta = 0.5          # [N/A] Symmetry factor in Butler-Volmer equation
@@ -81,9 +81,10 @@ SV_0[ptr.phi_dl_ca] = phi_ca_0 - phi_elyte_0
 "========= BUTLER VOLMER ========="
 def butler_volmer(i0, eta, p):
     # prevent numerical overflow (physically activation region only)
-    eta_lim = np.clip(eta, -0.3, 0.3)
+    # eta_lim = np.clip(eta, -0.3, 0.3)
+    # return i0 * (np.exp(-p.beta*p.n*F*eta_lim/(R*p.T)) - np.exp((1-p.beta)*p.n*F*eta_lim/(R*p.T)))
 
-    return i0 * (np.exp(-p.beta*p.n*F*eta_lim/(R*p.T)) - np.exp((1-p.beta)*p.n*F*eta_lim/(R*p.T)))
+    return i0 * (np.exp(-p.beta*p.n*F*eta/(R*p.T)) - np.exp((1-p.beta)*p.n*F*eta/(R*p.T)))
 
 
 "========= DEFINE RESIDUAL FUNCTION ========="
@@ -96,21 +97,21 @@ def derivative(_, SV, params, ptr):
     # Overpotentials
     eta_an = phi_dl_an - params.U_an
     eta_ca = phi_dl_ca - params.U_ca
-
+    
     # Faradaic currents
     i_Far_an = butler_volmer(params.i0_an, eta_an, params)
     i_Far_ca = butler_volmer(params.i0_ca, eta_ca, params)
-
+    
     # Anode
     i_dl_an = -params.i_ext - i_Far_an
-    phi_dl_an = -i_dl_an / params.C_dl_an
+    dphi_dl_an = -i_dl_an / params.C_dl_an
     
     # Cathode
     i_dl_ca = params.i_ext - i_Far_ca
-    phi_dl_ca = -i_dl_ca / params.C_dl_ca    
+    dphi_dl_ca = -i_dl_ca / params.C_dl_ca  
     
-    dSV_dt[ptr.phi_dl_an] = phi_dl_an
-    dSV_dt[ptr.phi_dl_ca] = phi_dl_ca
+    dSV_dt[ptr.phi_dl_an] = dphi_dl_an
+    dSV_dt[ptr.phi_dl_ca] = dphi_dl_ca
 
     return dSV_dt
 
