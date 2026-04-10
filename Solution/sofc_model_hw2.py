@@ -29,12 +29,15 @@ sigma_io = 0.08     # Electrolyte ionic conductivity (S/m)
 dy_elyte = 10e-6    # Electrolyte thickness (m)
 
 class params:
-    i_ext = 500     # External current (A/m2)
+    # Boundary conditions:
+    i_ext = 0     # External current (A/m2)
     T = 973         # Temperature (K)
 
+    # Equilibrium potentials:
     E_an = -0.4     # Equilibrium potential at anode interface (anode - elyte, V)
     E_ca = 0.6      # Equilibrium potential at cathode interface (cathode - elyte, V)
 
+    # Kinetics:
     i_o_ca = 0.1e3  # Cathode exchange current density, A/m2 of total SOFC area.
     i_o_an = 0.5e3  # Anode exchange current density, A/m2 of total SOFC area.
 
@@ -44,6 +47,7 @@ class params:
     beta_an = 0.5   # Symmetry parameter, anode charge transfer
     beta_ca = 0.5   # Symmetry parameter, cathode charge transfer
 
+    # Double layer:
     C_dl_an = 5e-2  # anode-electrolyte interface capacitance, F/m2 total SOFC area.
     C_dl_ca = 1e0   # cathode-electrolyte interface capacitance, F/m2 total SOFC area.
 
@@ -108,6 +112,7 @@ def derivative(_, SV, pars, ptr):
     eta = (SV[ptr.phi_ca]-SV[ptr.phi_elyte_ca]) - pars.E_ca
     #   Faradaic current:
     i_Far_ca = pars.i_o_ca*(exp(-pars.aF_RT_ca_fwd*eta) - exp(pars.aF_RT_ca_rev*eta))
+    print(eta, i_Far_ca)
     #   Double-layer current:
     i_dl_ca = pars.i_ext - i_Far_ca
     #   Cathode potential evolves at the rate of the local elyte, minus double layer:
