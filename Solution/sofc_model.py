@@ -11,61 +11,9 @@ from matplotlib import font_manager
 import numpy as np
 from scipy.integrate import solve_ivp
 
-# Plotting formatting:
-font = font_manager.FontProperties(family='Arial',
-                                   style='normal', size=10)
-ncolors = 3 # how many colors?
-ind_colors = np.linspace(0, 1.15, ncolors)
-colors = np.zeros_like(ind_colors)
-cmap = colormaps['plasma']
-colors = cmap(ind_colors)
 
-"========= LOAD INPUTS AND OTHER PARAMETERS ========="
-phi_ca_0 = 1.1      # Initial cathode voltage, relative to anode (V)
-phi_elyte_0 = 0.6   # Initial electrolyte voltage at equilibrium, relative to anode (V)
-
-sigma_io = 0.08     # Electrolyte ionic conductivity (S/m)
-dy_elyte = 10e-6    # Electrolyte thickness (m)
-
-class params:
-    # Boundary conditions:
-    i_ext = 0     # External current (A/m2)
-    T = 973         # Temperature (K)
-
-    # Geometry
-    npts_an = 3     # Number of finite volumes in the anode
-    npts_elyte = 10  # Number of finite volumes in the electrolyte
-    npts_ca = 3     # Number of finite volumes in the cathode
-
-    # Equilibrium potentials:
-    E_an = -0.4     # Equilibrium potential at anode interface (anode - elyte, V)
-    E_ca = 0.6      # Equilibrium potential at cathode interface (cathode - elyte, V)
-
-    # Kinetics:
-    i_o_ca = 0.1e3  # Cathode exchange current density, A/m2 of total SOFC area.
-    i_o_an = 0.5e3  # Anode exchange current density, A/m2 of total SOFC area.
-
-    n_elec_an = 2   # Number of electrical charge transferred per mol rxn, anode rxn
-    n_elec_ca = 2   # Number of electrical charge transferred per mol rxn, cathode rxn
-
-    beta_an = 0.5   # Symmetry parameter, anode charge transfer
-    beta_ca = 0.5   # Symmetry parameter, cathode charge transfer
-
-    # Double layer:
-    C_dl_an = 5e-2  # anode-electrolyte interface capacitance, F/m2 total SOFC area.
-    C_dl_ca = 1e0   # cathode-electrolyte interface capacitance, F/m2 total SOFC area.
-
-    # Total number of variables. Only storing electric potential, for now:
-    nvars_an = 1
-    nvars_elyte = 1
-    nvars_ca = 1
-
-    nvars_an_tot = nvars_an * npts_an
-    nvars_elyte_tot = nvars_elyte * npts_elyte
-    nvars_ca_tot = nvars_ca * npts_ca
-
-    nvars_tot = nvars_an_tot + nvars_ca_tot + nvars_elyte_tot
-
+# Import your inputs:
+from sofc_inputs import params
 
 # Positions in solution vector
 class ptr:
@@ -79,31 +27,18 @@ class ptr:
                        params.nvars_ca)
 
 
-# Additional parameter calculations:
-R = 8.3135              # Universal gas constant, J/mol-K
-F = 96485               # Faraday's constant, C/mol of charge
-
-# Derived parameters:
-#   Beta*nF/RT for each reaction (Beta*n renamed alpha_fwd, here)
-#   (1-Beta)*nF/RT for each reaction ((1-Beta)*n renamed alpha_rev, here)
-params.aF_RT_an_fwd = params.beta_an * params.n_elec_an * F / R / params.T
-params.aF_RT_an_rev = (1- params.beta_an) * params.n_elec_an * F / R / params.T
-
-params.aF_RT_ca_fwd = params.beta_ca * params.n_elec_ca * F / R / params.T
-params.aF_RT_ca_rev = (1- params.beta_ca) * params.n_elec_ca * F / R / params.T
-
 # Electric potential drop across the electrolyte (from Ohm's Law)
-dPhi_elyte = params.i_ext * dy_elyte / sigma_io
+dPhi_elyte = params.i_ext * params.dy_elyte /params.sigma_io
 
 "========= INITIALIZE MODEL ========="
 # Initialize the solution vector:
 SV_0 = np.zeros((params.nvars_tot,))
 
 # Set initial values, according to your approach:  eg:
-SV_0[ptr.phi_ca] = phi_ca_0 # Change this if needed, to fit your ptr approach
+SV_0[ptr.phi_ca] = params.phi_ca_0 # Change this if needed, to fit your ptr approach
 
 for i in range(params.npts_elyte):
-    SV_0[ptr.phi_elyte[i]] = (phi_elyte_0 - ((2*i + 1) - params.npts_elyte)
+    SV_0[ptr.phi_elyte[i]] = (params.phi_elyte_0 - ((2*i + 1) - params.npts_elyte)
                               * dPhi_elyte / (2*params.npts_elyte))
 
 
@@ -125,7 +60,7 @@ def derivative(_, SV, pars, ptr):
     #   Double-layer current:
     i_dl_an = -(pars.i_ext + i_Far_an)
     # This is for the electrolyte potential, which is equal to -dPhi_dl_an:
-    dSV_dt[ptr.phi_elyte] =  i_dl_an / pars.C_dl_an
+    dSV_dt[ptr.phi_elyte[0]] =  i_dl_an / pars.C_dl_an
 
     # Cathode double layer:
     #   Overpotential:
@@ -136,7 +71,7 @@ def derivative(_, SV, pars, ptr):
     #   Double-layer current:
     i_dl_ca = pars.i_ext - i_Far_ca
     #   Cathode potential evolves at the rate of the local elyte, minus double layer:
-    dSV_dt[ptr.phi_ca] = dSV_dt[ptr.phi_elyte[-1]] - i_dl_ca / pars.C_dl_ca
+    dSV_dt[ptr.phi_ca] =  - i_dl_ca / pars.C_dl_ca
 
     return dSV_dt
 
@@ -153,6 +88,15 @@ solution = solve_ivp(derivative, [0, .001], SV_0, args=(params, ptr), method='BD
 #       -The cathode.
 #   Using 'approach 1' above, these are direclty stored in your solution vector.
 
+
+# Plotting formatting:
+font = font_manager.FontProperties(family='Arial',
+                                   style='normal', size=10)
+ncolors = 3 # how many colors?
+ind_colors = np.linspace(0, 1.15, ncolors)
+colors = np.zeros_like(ind_colors)
+cmap = colormaps['plasma']
+colors = cmap(ind_colors)
 
 # Define the labels for your legend
 labels = ['$\phi_{elyte, an}$','$\phi_{elyte, ca}$','$\phi_{ca}$']
