@@ -2,14 +2,16 @@ from math import exp
 import numpy as np
 
 "========= DEFINE RESIDUAL FUNCTION ========="
-def residual(_, SV, pars, ptr):
+def residual(t, SV, dSV_dt, resid, input):
+    pars, ptr = input
+    # print(pars)
 
     # Initialize the derivative / residual:
-    dSV_dt = np.zeros_like(SV)
+    # resid = np.zeros_like(SV)
 
     # Anode potential does not change.  Leave those at zero.  Assumes very high
     #   electrical conductivity.
-
+    resid[ptr.phi_an] = SV[ptr.phi_an]
 
     # Anode double layer
     #   Overpotential:
@@ -19,7 +21,7 @@ def residual(_, SV, pars, ptr):
     #   Double-layer current:
     i_dl_an = -(pars.i_ext + i_Far_an)
     # This is for the electrolyte potential, which is equal to -dPhi_dl_an:
-    dSV_dt[ptr.phi_elyte[0]] =  i_dl_an / pars.C_dl_an
+    resid[ptr.phi_elyte] = dSV_dt[ptr.phi_elyte] -  i_dl_an / pars.C_dl_an
 
     # Cathode double layer:
     #   Overpotential:
@@ -30,6 +32,4 @@ def residual(_, SV, pars, ptr):
     #   Double-layer current:
     i_dl_ca = pars.i_ext - i_Far_ca
     #   Cathode potential evolves at the rate of the local elyte, minus double layer:
-    dSV_dt[ptr.phi_ca] =  - i_dl_ca / pars.C_dl_ca
-
-    return dSV_dt
+    resid[ptr.phi_ca] = dSV_dt[ptr.phi_ca] + i_dl_ca / pars.C_dl_ca

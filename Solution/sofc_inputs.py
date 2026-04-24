@@ -5,6 +5,8 @@ F = 96485               # Faraday's constant, C/mol of charge
 
 "========= LOAD INPUTS AND OTHER PARAMETERS ========="
 class params:
+    dae_flag = 1        # Is this a DAE (1) or an ODE (0)?
+
     phi_ca_0 = 1.1      # Initial cathode voltage, relative to anode (V)
     phi_elyte_0 = 0.6   # Initial electrolyte voltage at equilibrium, relative to anode (V)
 

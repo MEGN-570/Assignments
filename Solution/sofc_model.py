@@ -10,6 +10,7 @@ from matplotlib import colormaps
 from matplotlib import font_manager
 import numpy as np
 from scipy.integrate import solve_ivp
+from scikits.odes.dae import dae
 from sofc_funcs import residual
 import sofc_init
 
@@ -26,11 +27,23 @@ ptr = sofc_init.ptr(params)
 
 SV_0 = sofc_init.initialize(params, ptr)
 
+if params.dae_flag:
 
-"========= RUN / INTEGRATE MODEL ========="
-# Function call expects inputs (residual function, time span, initial value).
-solution = solve_ivp(residual, [0, .001], SV_0, args=(params, ptr), method='BDF',
-                     rtol = 1e-6, atol = 1e-8)
+    options =  {'user_data':(params, ptr), 'compute_initcond':'yp0', 'rtol':1e-4, 'atol':1e-10, 'algebraic_vars_idx':ptr.phi_an[:],'first_step_size':1e-18, 'compute_initcond_t0':1e-6}#algvars}
+
+    solver = dae('ida', residual, **options)
+    t_out = np.linspace(0, 100, 10000)
+    # Create an initial array of time derivatives and runs the integrator:
+    SVdot_0 = np.zeros_like(SV_0)
+    # SVdot_0 = -calc_residual(SV_0, SVdot_0, SVdot_0, (params, ptr))
+    solution = solver.solve(t_out, SV_0, SVdot_0)
+
+# "========= RUN / INTEGRATE MODEL ========="
+# # Function call expects inputs (residual function, time span, initial value).
+# solution = solve_ivp(residual, [0, .001], SV_0, args=(params, ptr), method='BDF',
+#                      rtol = 1e-6, atol = 1e-8)
+
+
 
 "========= PLOTTING AND POST-PROCESSING ========="
 # Depending on what you stored in SV, perform any necessary calculations to extract the
@@ -61,7 +74,7 @@ ax.set_prop_cycle('color',
 # Set figure size
 fig.set_size_inches((4,3))
 # Plot the data, using ms for time units:
-ax.plot(1e3*solution.t, solution.y.T)#, label=labels)
+ax.plot(1e3*solution.values.t, solution.values.y)#, label=labels)
 
 # Set y-axis limits
 ax.set_ylim((lower, upper))
