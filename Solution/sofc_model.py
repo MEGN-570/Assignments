@@ -32,7 +32,7 @@ if params.dae_flag:
     options =  {'user_data':(params, ptr), 'compute_initcond':'yp0', 'rtol':1e-4, 'atol':1e-10, 'algebraic_vars_idx':ptr.phi_an[:],'first_step_size':1e-18, 'compute_initcond_t0':1e-6}#algvars}
 
     solver = dae('ida', residual, **options)
-    t_out = np.linspace(0, 100, 10000)
+    t_out = np.linspace(0, 1e-3, 10000)
     # Create an initial array of time derivatives and runs the integrator:
     SVdot_0 = np.zeros_like(SV_0)
     # SVdot_0 = -calc_residual(SV_0, SVdot_0, SVdot_0, (params, ptr))
