@@ -32,4 +32,5 @@ def residual(t, SV, dSV_dt, resid, input):
     #   Double-layer current:
     i_dl_ca = pars.i_ext - i_Far_ca
     #   Cathode potential evolves at the rate of the local elyte, minus double layer:
-    resid[ptr.phi_ca] = dSV_dt[ptr.phi_ca] + i_dl_ca / pars.C_dl_ca
+    resid[ptr.phi_ca] = (dSV_dt[ptr.phi_ca] + i_dl_an/pars.C_dl_an
+                         + i_dl_ca / pars.C_dl_ca)
