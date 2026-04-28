@@ -1,0 +1,286 @@
+import numpy as np
+from scipy.integrate import solve_ivp
+from scipy.optimize import fsolve
+import matplotlib.pyplot as plt
+
+params = {
+    'F'           : 96485,    # Faraday's constant (C/mol)
+    'R'           : 8.314,    # gas constant (J/mol/K)
+    'T'           : 298.15,   # temperature (K)
+    'n'           : 1,        # electrons transferred 
+
+    # Double layer capacitances (Sharafi 2016)
+    'C_dl_an'     : 1e-4,     # anode double layer capacitance (F/m^2)
+    'C_dl_ca'     : 1e-4,     # cathode double layer capacitance (F/m^2)
+
+    # Applied current
+    'i_ext'       : 0.5,      # external current density (A/m^2) 
+
+    # Butler-Volmer anode (Li metal) 
+    'i0_an_ref'   : 2.0,      # anode reference exchange current density (A/m^2)
+    'alpha_a_an'  : 0.5,
+    'alpha_c_an'  : 0.5,
+    'U_an'        : 0.0,      # anode equilibrium potential Li/Li+ (V)
+
+    # Butler-Volmer cathode
+    'i0_ca_ref'   : 1.0,      # cathode reference exchange current density (A/m^2)
+    'alpha_a_ca'  : 0.5,
+    'alpha_c_ca'  : 0.5,
+    'U_ca_ref'    : 3.9,      # cathode reference OCP (V) - Doyle 1993
+
+    # LLZO solid electrolyte 
+    'sigma_elyte' : 1e-3,     # ionic conductivity (S/m)
+    'L_elyte'     : 100e-6,   # electrolyte thickness (m)
+
+    # Electrode thicknesses
+    'L_ca'        : 50e-6,    # cathode thickness (m) 
+
+    # Concentration parameters
+    'C_Li_elyte_0': 1000.0,   # initial Li+ in electrolyte (mol/m^3)
+    'C_Li_ca_0'   : 20000.0,  # initial Li in cathode (mol/m^3)
+    'C_Li_ca_max' : 50000.0,  # max Li in cathode (mol/m^3)
+}
+
+# =============================================================================
+# STATE VECTOR
+# SV[0] : delta_phi_an  - anode double layer = phi_an - phi_elyte (V)
+# SV[1] : C_Li_elyte    - Li+ concentration in LLZO electrolyte (mol/m^3)
+# SV[2] : delta_phi_ca  - cathode double layer = phi_ca - phi_elyte (V)
+# SV[3] : C_Li_ca       - Li concentration in cathode (mol/m^3)
+
+i_delta_phi_an = 0
+i_C_Li_elyte   = 1
+i_delta_phi_ca = 2
+i_C_Li_ca      = 3
+
+
+t_max = (params['F'] * (params['C_Li_ca_max'] - params['C_Li_ca_0'])
+         * params['L_ca'] / params['i_ext'])
+print(f"Theoretical full-charge time: {t_max:.1f} s ({t_max/3600:.2f} hr)")
+
+SV_0 = np.array([
+    params['U_an'],         # delta_phi_an starts at anode equilibrium
+    params['C_Li_elyte_0'], # Li+ concentration in electrolyte
+    params['U_ca_ref'],     # delta_phi_ca starts at cathode OCP
+    params['C_Li_ca_0'],    # Li in cathode
+])
+
+# =============================================================================
+# HELPERS solver functions
+# =============================================================================
+def ohmic_drop(params):
+    """Voltage drop across LLZO from Ohm's law: V = i * L / sigma"""
+    return params['i_ext'] * params['L_elyte'] / params['sigma_elyte']
+
+def nernst_cathode(C_Li_ca, params):
+    """
+    Nernst equation for cathode OCP.
+    U = U_ref - (RT/nF) * ln(C / C_max)
+    OCP drops as cathode fills with Li.
+    """
+    ratio = np.clip(C_Li_ca / params['C_Li_ca_max'], 1e-6, 1 - 1e-6)
+    return params['U_ca_ref'] - (
+        params['R'] * params['T'] / (params['n'] * params['F'])
+    ) * np.log(ratio)
+
+def i0_conc(i0_ref, C, C0):
+    """
+    Concentration-dependent exchange current density.
+    i0 = i0_ref * sqrt(C / C0)
+    Reaction slows as species depletes.
+    """
+    return i0_ref * np.sqrt(np.clip(C / C0, 1e-6, None))
+
+def butler_volmer(i0, alpha_a, alpha_c, eta, params):
+    """Standard Butler-Volmer equation."""
+    F, R, T = params['F'], params['R'], params['T']
+    return i0 * (
+        np.exp( alpha_a * F * eta / (R * T)) -
+        np.exp(-alpha_c * F * eta / (R * T))
+    )
+
+# =============================================================================
+# ODE SYSTEM - 4 state variables
+# =============================================================================
+def dSV_dt(t, SV, params):
+    dSVdt = np.zeros_like(SV)
+
+    # Unpack
+    delta_phi_an = SV[i_delta_phi_an]
+    C_Li_elyte   = SV[i_C_Li_elyte]
+    delta_phi_ca = SV[i_delta_phi_ca]
+    C_Li_ca      = SV[i_C_Li_ca]
+
+    # -------------------------------------------------------------------------
+    # ANODE Butler-Volmer
+    # eta_an = delta_phi_an - U_an
+    # -------------------------------------------------------------------------
+    eta_an   = delta_phi_an - params['U_an']
+    i0_an    = i0_conc(params['i0_an_ref'], C_Li_elyte, params['C_Li_elyte_0'])
+    i_Far_an = butler_volmer(i0_an, params['alpha_a_an'], params['alpha_c_an'],
+                             eta_an, params)
+
+    # -------------------------------------------------------------------------
+    # CATHODE Butler-Volmer with Nernst OCP
+    # eta_ca = delta_phi_ca - U_ca(C_Li_ca)
+    # -------------------------------------------------------------------------
+    U_ca     = nernst_cathode(C_Li_ca, params)
+    eta_ca   = delta_phi_ca - U_ca
+    i0_ca    = i0_conc(params['i0_ca_ref'], C_Li_ca, params['C_Li_ca_0'])
+    i_Far_ca = butler_volmer(i0_ca, params['alpha_a_ca'], params['alpha_c_ca'],
+                             eta_ca, params)
+
+    # -------------------------------------------------------------------------
+    # SV[0]: Anode double layer
+    # Excess current (i_ext - i_Far) charges the capacitor
+    # -------------------------------------------------------------------------
+    dSVdt[i_delta_phi_an] = (params['i_ext'] - i_Far_an) / params['C_dl_an']
+
+    # -------------------------------------------------------------------------
+    # SV[1]: Li+ concentration in electrolyte — SPECIES BALANCE 
+    # -------------------------------------------------------------------------
+    dC = (i_Far_an - i_Far_ca) / (params['F'] * params['L_elyte'])
+    dSVdt[i_C_Li_elyte] = dC
+
+    # -------------------------------------------------------------------------
+    # SV[2]: Cathode double layer
+    # -------------------------------------------------------------------------
+    dSVdt[i_delta_phi_ca] = (params['i_ext'] - i_Far_ca) / params['C_dl_ca']
+
+    # -------------------------------------------------------------------------
+    # SV[3]: Li concentration in cathode — SPECIES BALANCE (no transport)
+    # Li+ inserts into cathode and gets reduced to Li
+    # -------------------------------------------------------------------------
+    dSVdt[i_C_Li_ca] = i_Far_ca / (params['F'] * params['L_ca'])
+
+    return dSVdt
+
+# =============================================================================
+# INTEGRATE
+# =============================================================================
+t_span = (0, t_max)
+t_eval = np.linspace(*t_span, 3000)
+
+solution = solve_ivp(
+    fun=lambda t, SV: dSV_dt(t, SV, params),
+    t_span=t_span,
+    y0=SV_0,
+    method='BDF',
+    t_eval=t_eval,
+    rtol=1e-6,
+    atol=1e-8,
+)
+
+print(f"Solver: {'SUCCESS' if solution.success else 'FAILED'}")
+
+# =============================================================================
+# POST
+
+t              = solution.t
+delta_phi_an   = solution.y[i_delta_phi_an]
+C_Li_elyte     = solution.y[i_C_Li_elyte]
+delta_phi_ca   = solution.y[i_delta_phi_ca]
+C_Li_ca        = solution.y[i_C_Li_ca]
+
+# phi_elyte (Ohm's law) 
+V_ohmic        = ohmic_drop(params)
+phi_elyte_arr  = -V_ohmic * np.ones_like(t)   
+
+# Cell voltage = cathode potential - anode potential - ohmic drop
+# V_cell = delta_phi_ca - delta_phi_an - ohmic_drop
+V_cell = delta_phi_ca - delta_phi_an - V_ohmic
+
+# Faradaic currents for plotting
+eta_an_arr   = delta_phi_an - params['U_an']
+i0_an_arr    = i0_conc(params['i0_an_ref'], C_Li_elyte, params['C_Li_elyte_0'])
+i_Far_an_arr = i0_an_arr * (
+    np.exp( params['alpha_a_an'] * params['F'] * eta_an_arr / (params['R'] * params['T'])) -
+    np.exp(-params['alpha_c_an'] * params['F'] * eta_an_arr / (params['R'] * params['T']))
+)
+
+U_ca_arr     = nernst_cathode(C_Li_ca, params)
+
+# =============================================================================
+# ANALYTICAL CHECK
+# =============================================================================
+def BV_residual(eta):
+    return params['i0_an_ref'] * (
+        np.exp( params['alpha_a_an'] * params['F'] * eta / (params['R'] * params['T'])) -
+        np.exp(-params['alpha_c_an'] * params['F'] * eta / (params['R'] * params['T']))
+    ) - params['i_ext']
+
+eta_an_ss = fsolve(BV_residual, x0=0.05)[0]
+
+print(f"\n--- Analytical Checks ---")
+print(f"Exact BV eta_an SS         : {eta_an_ss*1000:.3f} mV")
+print(f"Simulated delta_phi_an SS  : {delta_phi_an[-1]*1000:.3f} mV")
+print(f"Ohmic drop across LLZO     : {V_ohmic*1000:.3f} mV")
+print(f"C_Li_elyte final           : {C_Li_elyte[-1]:.2f} mol/m^3  "
+      f"(depleted {100*(1 - C_Li_elyte[-1]/params['C_Li_elyte_0']):.1f}%)")
+print(f"C_Li_ca final              : {C_Li_ca[-1]:.2f} mol/m^3  "
+      f"(filled {100*(C_Li_ca[-1]-params['C_Li_ca_0'])/(params['C_Li_ca_max']-params['C_Li_ca_0']):.1f}%)")
+print(f"Initial cell voltage       : {V_cell[0]:.3f} V")
+print(f"Final cell voltage         : {V_cell[-1]:.3f} V")
+
+# =============================================================================
+# PLOT
+# =============================================================================
+fig, axes = plt.subplots(5, 1, figsize=(11, 17), sharex=True)
+fig.suptitle('Solid-State Li Battery — Full Model (Discharging)\n'
+             'Li metal | LLZO Electrolyte | Cathode\n'
+             '4 State Variables + Algebraic Ohmic Drop',
+             fontweight='bold', fontsize=13)
+
+t_hr = t / 3600   # plot in hours
+
+# --- Plot 1: Cell Voltage (most important!) ---
+axes[0].plot(t_hr, V_cell, color='navy', lw=2.5)
+axes[0].set_ylabel('Cell Voltage (V)', fontsize=11)
+axes[0].set_title('Cell Voltage V(t) = Δφ_ca − Δφ_an − V_ohmic', fontsize=10)
+axes[0].grid(True, alpha=0.3)
+axes[0].set_ylim([V_cell.min() - 0.05, V_cell.max() + 0.05])
+
+# --- Plot 2: Anode double layer ---
+axes[1].plot(t_hr, delta_phi_an*1000, color='steelblue', lw=2, label='Simulated')
+axes[1].axhline(eta_an_ss*1000, color='green', ls='--', lw=1.5,
+                label=f'Analytical SS = {eta_an_ss*1000:.1f} mV')
+axes[1].set_ylabel(r'$\Delta\phi_{an}$ (mV)', fontsize=11)
+axes[1].set_title('Anode Double Layer Potential (Butler-Volmer SS)', fontsize=10)
+axes[1].legend(fontsize=9)
+axes[1].grid(True, alpha=0.3)
+
+# --- Plot 3: Li+ concentration in electrolyte ---
+axes[2].plot(t_hr, C_Li_elyte, color='purple', lw=2)
+axes[2].axhline(params['C_Li_elyte_0'], color='gray', ls='--', lw=1.5,
+                label=f'Initial = {params["C_Li_elyte_0"]:.0f} mol/m³')
+axes[2].set_ylabel(r'$C_{Li,elyte}$ (mol/m³)', fontsize=11)
+axes[2].set_title('Li⁺ Concentration in LLZO Electrolyte\n'
+                  '(Net species balance: produced at anode, consumed at cathode — stays ~constant at SS)', fontsize=10)
+axes[2].legend(fontsize=9)
+axes[2].grid(True, alpha=0.3)
+
+# --- Plot 4: Cathode OCP (Nernst) ---
+axes[3].plot(t_hr, U_ca_arr, color='darkorange', lw=2)
+axes[3].axhline(params['U_ca_ref'], color='gray', ls='--', lw=1.5,
+                label=f'U_ca_ref = {params["U_ca_ref"]:.1f} V')
+axes[3].set_ylabel(r'$U_{ca}$ (V)', fontsize=11)
+axes[3].set_title('Cathode OCP from Nernst Equation (shifts as Li inserts)', fontsize=10)
+axes[3].legend(fontsize=9)
+axes[3].grid(True, alpha=0.3)
+
+# --- Plot 5: Li concentration in cathode ---
+axes[4].plot(t_hr, C_Li_ca, color='darkgreen', lw=2, label='C_Li_ca')
+axes[4].axhline(params['C_Li_ca_max'], color='red', ls='--', lw=1.5,
+                label=f'Max = {params["C_Li_ca_max"]:.0f} mol/m³')
+axes[4].axhline(params['C_Li_ca_0'], color='gray', ls='--', lw=1.5,
+                label=f'Initial = {params["C_Li_ca_0"]:.0f} mol/m³')
+axes[4].set_ylabel(r'$C_{Li,ca}$ (mol/m³)', fontsize=11)
+axes[4].set_title('Li Concentration in Cathode (Insertion — Species Balance)', fontsize=10)
+axes[4].set_xlabel('Time (hours)', fontsize=11)
+axes[4].legend(fontsize=9)
+axes[4].grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('li_battery_v6.png', dpi=150)
+print(f"\nPlot saved to: li_battery_v6.png")
+plt.show()
