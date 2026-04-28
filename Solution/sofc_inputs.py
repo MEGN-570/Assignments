@@ -7,15 +7,25 @@ F = 96485               # Faraday's constant, C/mol of charge
 class params:
     dae_flag = 1        # Is this a DAE (1) or an ODE (0)?
 
-    phi_ca_0 = 1.1      # Initial cathode voltage, relative to anode (V)
-    phi_elyte_0 = 0.6   # Initial electrolyte voltage at equilibrium, relative to anode (V)
-
-    sigma_io = 0.08     # Electrolyte ionic conductivity (S/m)
-    dy_elyte = 10e-6    # Electrolyte thickness (m)
-
     # Boundary conditions:
     i_ext = 0     # External current (A/m2)
     T = 973         # Temperature (K)
+
+    phi_ca_0 = 1.1      # Initial cathode voltage, relative to anode (V)
+    phi_elyte_0 = 0.6   # Initial electrolyte voltage at equilibrium, relative to anode (V)
+
+    sigma_io = 1        # Electrolyte ionic conductivity (S/m)
+    dy_elyte = 10e-6    # Electrolyte thickness (m)
+
+    sigma_el = 1.4e7    # Electrical conductivity of Nickel (S/m)
+
+    # Anode parameters:
+    dy_an = 1e-3        # Anode thickness (m)
+    eps_g_an = .47      # Anode porosity (gas phase vol frac, -)
+    eps_el_an = .3      # Anode metal phase vol frac, -)
+    eps_io_an = 1 - eps_g_an - eps_el_an
+    n_brugg = 0.5       # Bruggeman coefficient
+
 
     # Geometry
     npts_an = 3     # Number of finite volumes in the anode
@@ -41,7 +51,7 @@ class params:
     C_dl_ca = 1e0   # cathode-electrolyte interface capacitance, F/m2 total SOFC area.
 
     # Total number of variables. Only storing electric potential, for now:
-    nvars_an = 1
+    nvars_an = 2
     nvars_elyte = 1
     nvars_ca = 1
 
