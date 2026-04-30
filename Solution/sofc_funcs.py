@@ -9,11 +9,13 @@ def residual(t, SV, dSV_dt, resid, input):
     # Initialize the derivative / residual:
     # resid = np.zeros_like(SV)
 
-    # Anode potential does not change.  Currently set to zero, which assumes very high
-    #   electrical conductivity.
+    # Anode potential does not change, adjacent to current collector:
+    resid[ptr.phi_an_el[0]] = dSV_dt[ptr.phi_an_el[0]]
+
+    # For now, other anode potentials are explicitly set to zero:
     """ Change this, for HW 4: """
-    for i in np.arange(pars.npts_an):
-        resid[ptr.phi_an_el[i]] = SV[ptr.phi_an_el[i]]
+    for i in np.arange(pars.npts_an-1):
+        resid[ptr.phi_an_el[i+1]] = SV[ptr.phi_an_el[i+1]]
 
     # For now, all charge transfer is in the last anode volume.  Assume that the
     #   electolyte phase electric potential does not change, for all other volumes.
