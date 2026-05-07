@@ -25,6 +25,7 @@ oxide_surf = ct.Interface("sofc.yaml", "oxide_surface", [gas, oxide_bulk])
 tpb        = ct.Interface("sofc.yaml", "tpb", [metal, metal_surf, oxide_surf])
 
 # hold surface coverages fixed
+# UNNECESSARY
 metal_surf.coverages = metal_surf.coverages
 oxide_surf.coverages = oxide_surf.coverages
 
@@ -79,11 +80,12 @@ for eta in eta_vec:
 
 i_cantera = np.array(i_cantera)
 
-
 "========= BUTLER-VOLMER ========="
 # i = i0 * [exp((1-beta)nF eta / RT) - exp(-beta nF eta / RT)]
 
 # evaluate everything at equilibrium state (eta = 0)
+# Delta_phi_eq = 0;
+# modifying the k values is recovered from k_f_mod = k_f * a and k_r_mod = d_r * 1/a
 set_potentials(Delta_phi_eq)
 
 # rate constants for forward/reverse reaction
@@ -133,6 +135,8 @@ i_BV = i0*(np.exp((1-beta)*n*F*eta_vec/(R*tpb.T)) - np.exp(-beta*n*F*eta_vec/(R*
 
 print(f"i0 = {i0:.4e} A/m")
 
+max_val = max(i_cantera-i_BV)
+print(max_val)
 
 "========= PLOTTING ========="
 from matplotlib import font_manager
